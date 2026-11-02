@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo Oracle — Ask the Image</title>
+<style>
+  :root{
+    --bg:#0a0c11;
+    --panel:#11151d;
+    --panel-2:#161c26;
+    --line:#232c3a;
+    --text:#e8edf5;
+    --muted:#8b98ad;
+    --accent:#35e0c5;
+    --accent-2:#6ea8fe;
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    color:var(--text);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1200px 700px at 15% -10%, #16323a 0%, transparent 60%),
+      radial-gradient(900px 600px at 100% 0%, #1a2340 0%, transparent 55%),
+      var(--bg);
+    min-height:100vh;
+    padding:28px 20px 60px;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+
+  header h1{
+    margin:0 0 6px;
+    font-size:clamp(22px,3.2vw,32px);
+    letter-spacing:-.02em;
+  }
+  header h1 span{color:var(--accent)}
+  header p{margin:0;color:var(--muted);font-size:14px}
+
+  .disclaimer{
+    margin:16px 0 22px;
+    padding:12px 16px;
+    border:1px solid #3a2f1a;
+    background:linear-gradient(180deg, rgba(255,196,86,.08), rgba(255,196,86,.03));
+    border-radius:12px;
+    font-size:13px;
+    color:#e5cf9f;
+    line-height:1.5;
+  }
+  .disclaimer strong{color:#ffd782}
+
+  .grid{
+    display:grid;
+    grid-template-columns:minmax(0,1.45fr) minmax(320px,1fr);
+    gap:20px;
+    align-items:start;
+  }
+  @media (max-width:880px){
+    .grid{grid-template-columns:1fr}
+  }
+
+  /* ---------- Stage ---------- */
+  .stage{
+    position:relative;
+    border:1px dashed var(--line);
+    border-radius:var(--radius);
+    background:linear-gradient(180deg,var(--panel),#0d1118);
+    min-height:340px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:14px;
+    transition:border-color .2s, background .2s;
+    overflow:hidden;
+  }
+  .stage.loaded{border-style:solid}
+  .stage.dragover{border-color:var(--accent);background:#0f1c1c}
+
+  #canvas{
+    max-width:100%;
+    max-height:68vh;
+    width:auto;height:auto;
+    display:block;
+    border-radius:10px;
+    box-shadow:0 18px 50px rgba(0,0,0,.55);
+  }
+
+  .placeholder{text-align:center;color:var(--muted);padding:30px}
+  .placeholder .ico{font-size:42px;margin-bottom:10px;opacity:.9}
+  .placeholder strong{color:var(--text);display:block;margin-bottom:4px;font-size:16px}
+  .placeholder p{margin:0;font-size:13px}
+
+  .bubble{
+    position:absolute;
+    left:50%;
+    top:18px;
+    transform:translate(-50%,-8px) scale(.96);
+    max-width:min(88%,560px);
+    background:rgba(10,16,20,.92);
+    border:1px solid rgba(53,224,197,.55);
+    color:#dffcf6;
+    padding:12px 16px;
+    border-radius:14px;
+    font-size:14px;
+    line-height:1.45;
+    letter-spacing:.01em;
+    box-shadow:0 0 0 1px rgba(53,224,197,.12), 0 12px 40px rgba(0,0,0,.6);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .25s, transform .25s;
+    backdrop-filter:blur(6px);
+  }
+  .bubble.show{opacity:1;transform:translate(-50%,0) scale(1)}
+  .bubble.pending{color:var(--muted);font-style:italic;border-color:rgba(110,168,254,.4)}
+  .bubble::after{
+    content:"";
+    position:absolute;
+    left:50%;bottom:-7px;
+    width:12px;height:12px;
+    margin-left:-6px;
+    background:rgba(10,16,20,.92);
+    border-right:1px solid rgba(53,224,197,.55);
+    border-bottom:1px solid rgba(53,224,197,.55);
+    transform:rotate(45deg);
+  }
+
+  /* ---------- Controls ---------- */
+  .controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+    margin-top:14px;
+  }
+  .btn{
+    appearance:none;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+    color:var(--text);
+    padding:10px 16px;
+    border-radius:10px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    transition:.18s;
+    font-family:inherit;
+  }
+  .btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.primary{background:linear-gradient(180deg,#1b3a3a,#12282a);border-color:#2f6a63}
+  .btn.primary:hover:not(:disabled){box-shadow:0 0 0 3px rgba(53,224,197,.12)}
+
+  .toggle{
+    display:inline-flex;align-items:center;gap:7px;
+    font-size:13px;color:var(--muted);
+    padding:9px 12px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--panel-2);
+    cursor:pointer;
+    user-select:none;
+  }
+  .toggle input{accent-color:var(--accent);cursor:pointer}
+
+  /* ---------- Panel ---------- */
+  .panel{display:flex;flex-direction:column;gap:12px}
+  .panel h2{
+    font-size:12px;text-transform:uppercase;letter-spacing:.14em;
+    color:var(--muted);margin:2px 0 0;font-weight:700;
+  }
+
+  .ask{
+    display:flex;
+    gap:14px;
+    align-items:flex-start;
+    text-align:left;
+    width:100%;
+    padding:16px 18px;
+    border-radius:14px;
+    border:1px solid var(--line);
+    background:linear-gradient(180deg,var(--panel-2),#10141b);
+    color:var(--text);
+    cursor:pointer;
+    font-family:inherit;
+    transition:.18s;
+    position:relative;
+    overflow:hidden;
+  }
+  .ask::before{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(120deg,transparent 30%,rgba(53,224,197,.09) 50%,transparent 70%);
+    transform:translateX(-100%);
+    transition:transform .6s;
+  }
+  .ask:hover:not(:disabled)::before{transform:translateX(100%)}
+  .ask:hover:not(:disabled){border-color:#2f6a63;transform:translateY(-1px)}
+  .ask:disabled{opacity:.42;cursor:not-allowed}
+  .ask .num{
+    flex:0 0 30px;height:30px;border-radius:9px;
+    display:grid;place-items:center;
+    background:rgba(53,224,197,.12);
+    border:1px solid rgba(53,224,197,.35);
+    color:var(--accent);font-weight:800;font-size:14px;
+  }
+  .ask .q{display:block;font-size:15px;font-weight:700;margin-bottom:5px}
+  .ask .route{
+    display:block;font-size:11.5px;color:var(--muted);
+    letter-spacing:.03em;line-height:1.5;
+  }
+
+  .log{
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:linear-gradient(180deg,var(--panel),#0c1015);
+    padding:14px 16px;
+    min-height:120px;
+  }
+  .log ul{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:10px;max-height:280px;overflow:auto}
+  .log li{
+    font-size:13px;
+    border-left:2px solid rgba(53,224,197,.5);
+    padding:2px 0 2px 11px;
+    animation:fadeIn .35s ease;
+  }
+  .log li .q{display:block;color:var(--muted);font-size:11.5px;margin-bottom:3px}
+  .log li .a{display:block;color:#dffcf6}
+  .log .empty{color:var(--muted);font-size:13px;margin-top:10px}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+  kbd{
+    font-family:ui-monospace,monospace;font-size:11px;
+    border:1px solid var(--line);border-bottom-width:2px;
+    padding:1px 5px;border-radius:5px;color:var(--muted);background:#0d1118;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Photo <span>Oracle</span></h1>
+    <p>Upload a photo → trace the two scan paths → hear what the image “says”.</p>
+  </header>
+
+  <div class="disclaimer">
+    <strong>Simulated / entertainment only.</strong>
+    Photographs cannot talk, and no software can determine a person's date of birth or date of death from an image.
+    The “readings” below are generated from the picture's pixel data purely for demonstration.
+    Never treat any output here as a real prediction, medical information, or a genuine world record.
+  </div>
+
+  <div class="grid">
+
+    <!-- ============ STAGE ============ -->
+    <section>
+      <div class="stage" id="dropzone">
+        <canvas id="canvas" hidden></canvas>
+        <div class="placeholder" id="placeholder">
+          <div class="ico">🖼️</div>
+          <strong>Drop a photo or image here</strong>
+          <p>JPG · PNG · WEBP — or use “Upload photo” below</p>
+        </div>
+        <div class="bubble" id="bubble" hidden></div>
+      </div>
+
+      <div class="controls">
+        <label class="btn primary" style="display:inline-block">
+          Upload photo
+          <input type="file" id="fileInput" accept="image/*" hidden>
+        </label>
+        <button class="btn" id="clearBtn" disabled>Clear</button>
+        <label class="toggle"><input type="checkbox" id="voiceToggle" checked> Voice</label>
+        <label class="toggle"><input type="checkbox" id="agtToggle"> AGT8000 mode</label>
+      </div>
+    </section>
+
+    <!-- ============ PANEL ============ -->
+    <section class="panel">
+      <h2>The two questions</h2>
+
+      <button class="ask" id="btnBirth" disabled>
+        <span class="num">1</span>
+        <span>
+          <span class="q">What is their day of birth?</span>
+          <span class="route">
+            bottom-left ↗ diagonal to top-right →<br>
+            straight along the top edge to top-left →<br>
+            straight down to bottom-left
+          </span>
+        </span>
+      </button>
+
+      <button class="ask" id="btnDeath" disabled>
+        <span class="num">2</span>
+        <span>
+          <span class="q">What is their day of death at birth?</span>
+          <span class="route">
+            top-right ↙ diagonal to bottom-left →<br>
+            straight along the bottom edge to bottom-right →<br>
+            straight up to top-right
+          </span>
+        </span>
+      </button>
+
+      <p style="margin:2px 0 0;font-size:12px;color:var(--muted)">
+        Shortcuts: <kbd>1</kbd> day of birth · <kbd>2</kbd> day of death
+      </p>
+
+      <div class="log">
+        <h2 style="margin:0">Transcript</h2>
+        <ul id="logList"></ul>
+        <div class="empty" id="logEmpty">No questions asked yet.</div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------------- DOM ---------------- */
+  const canvas      = document.getElementById('canvas');
+  const ctx         = canvas.getContext('2d');
+  const bubble      = document.getElementById('bubble');
+  const placeholder = document.getElementById('placeholder');
+  const dropzone    = document.getElementById('dropzone');
+  const fileInput   = document.getElementById('fileInput');
+  const clearBtn    = document.getElementById('clearBtn');
+  const btnBirth    = document.getElementById('btnBirth');
+  const btnDeath    = document.getElementById('btnDeath');
+  const voiceToggle = document.getElementById('voiceToggle');
+  const agtToggle   = document.getElementById('agtToggle');
+  const logList     = document.getElementById('logList');
+  const logEmpty    = document.getElementById('logEmpty');
+
+  /* ---------------- Constants ---------------- */
+  const MONTHS = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+
+  // Normalised scan routes (x, y) with y=0 at the TOP of the photo.
+  // 1) bottom-left -> top-right -> top-left -> bottom-left
+  // 2) top-right   -> bottom-left -> bottom-right -> top-right
+  const PATHS = {
+    birth: [[0,1],[1,0],[0,0],[0,1]],
+    death: [[1,0],[0,1],[1,1],[1,0]]
+  };
+
+  const MAX_DIM = 1280; // canvas resolution cap
+
+  /* ---------------- State ---------------- */
+  const state = {
+    img: null,
+    animating: false,
+    voiceOn: true,
+    agt: false,
+    readings: null,   // { birth: Date, death: Date }
+    runId: 0,
+    typer: null
+  };
+
+  /* ================= Image loading ================= */
+
+  function loadFile(file){
+    if (!file || !file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      state.img = img;
+      state.readings = null;
+
+      // Fit canvas to the image (capped)
+      const scale = Math.min(1, MAX_DIM / Math.max(img.naturalWidth, img.naturalHeight));
+      canvas.width  = Math.max(1, Math.round(img.naturalWidth  * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+
+      canvas.hidden = false;
+      placeholder.hidden = true;
+      dropzone.classList.add('loaded');
+
+      hideBubble();
+      drawIdle();
+      updateButtons();
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+  }
+
+  function clearAll(){
+    state.runId++;                 // cancel any running animation
+    state.animating = false;
+    state.img = null;
+    state.readings = null;
+    canvas.hidden = true;
+    placeholder.hidden = false;
+    dropzone.classList.remove('loaded');
+    hideBubble();
+    clearInterval(state.typer);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    logList.innerHTML = '';
+    logEmpty.hidden = false;
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    updateButtons();
+  }
+
+  /* ================= Drawing ================= */
+
+  function buildPolyline(pts, w, h){
+    const px = pts.map(([x, y]) => ({ x: x * w, y: y * h }));
+    const segs = [];
+    let total = 0;
+    for (let i = 0; i < px.length - 1; i++){
+      const a = px[i], b = px[i + 1];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      segs.push({ a, b, len, start: total });
+      total += len;
+    }
+    return { segs, total };
+  }
+
+  function pointAt(poly, d){
+    const segs = poly.segs;
+    for (let i = 0; i < segs.length; i++){
+      const s = segs[i];
+      const last = i === segs.length - 1;
+      if (d <= s.start + s.len || last){
+        const t = s.len === 0 ? 0 : Math.min(1, Math.max(0, (d - s.start) / s.len));
+        return { x: s.a.x + (s.b.x - s.a.x) * t, y: s.a.y + (s.b.y - s.a.y) * t };
+      }
+    }
+    return segs[0] ? segs[0].a : { x: 0, y: 0 };
+  }
+
+  function drawTrail(poly, d, w){
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(53,224,197,0.92)';
+    ctx.lineWidth = Math.max(2, w * 0.0035);
+    ctx.shadowColor = 'rgba(53,224,197,0.95)';
+    ctx.shadowBlur = Math.max(10, w * 0.02);
+    ctx.beginPath();
+    let started = false;
+    for (const s of poly.segs){
+      if (d <= s.start) break;
+      const t = Math.min(1, (d - s.start) / s.len);
+      if (!started){ ctx.moveTo(s.a.x, s.a.y); started = true; }
+      ctx.lineTo(s.a.x + (s.b.x - s.a.x) * t, s.a.y + (s.b.y - s.a.y) * t);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCorners(w, h){
+    const r = Math.max(3, w * 0.006);
+    const pad = r * 2.4;
+    ctx.save();
+    ctx.fillStyle = 'rgba(110,168,254,0.75)';
+    ctx.shadowColor = 'rgba(110,168,254,0.8)';
+    ctx.shadowBlur = 10;
+    [[0,0],[w,0],[0,h],[w,h]].forEach(([x, y]) => {
+      const cx = Math.min(Math.max(x, pad), w - pad);
+      const cy = Math.min(Math.max(y, pad), h - pad);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function drawScene(poly, d){
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(state.img, 0, 0, w, h);
+
+    // subtle vignette so the neon trail pops
+    const g = ctx.createRadialGradient(w/2, h/2, Math.min(w,h)*0.25, w/2, h/2, Math.max(w,h)*0.75);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    drawTrail(poly, d, w);
+    drawCorners(w, h);
+
+    const p = pointAt(poly, d);
+    ctx.save();
+    ctx.shadowColor = '#8fc4ff';
+    ctx.shadowBlur = 24;
+    ctx.fillStyle = '#eafcff';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(4, w * 0.0075), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawIdle(){
+    if (!state.img) return;
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(state.img, 0, 0, w, h);
+  }
+
+  /* ================= Readings ================= */
+
+  function hashImage(img){
+    try {
+      const N = 40;
+      const c = document.createElement('canvas');
+      c.width = N; c.height = N;
+      const cx = c.getContext('2d', { willReadFrequently: true });
+      cx.drawImage(img, 0, 0, N, N);
+      const data = cx.getImageData(0, 0, N, N).data;
+      let h = 2166136261;
+      for (let i = 0; i < data.length; i += 4){
+        h ^= data[i] + data[i+1] * 3 + data[i+2] * 7 + data[i+3] * 11;
+        h = Math.imul(h, 16777619);
+      }
+      return h >>> 0;
+    } catch (e){
+      return (Date.now() ^ 0x9e3779b9) >>> 0;
+    }
+  }
+
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function makeReadings(seed){
+    const rnd = mulberry32(seed);
+    const by = 1900 + Math.floor(rnd() * 111);          // 1900 – 2010
+    const bm = Math.floor(rnd() * 12);
+    const bd = 1 + Math.floor(rnd() * 28);
+    const birth = new Date(Date.UTC(by, bm, bd));
+
+    const years = 55 + Math.floor(rnd() * 55);          // 55 – 109 years
+    const death = new Date(Date.UTC(by + years, bm, bd));
+    death.setUTCDate(death.getUTCDate() + Math.floor(rnd() * 18));
+
+    return { birth, death };
+  }
+
+  function getReadings(){
+    if (!state.readings) state.readings = makeReadings(hashImage(state.img));
+    return state.readings;
+  }
+
+  const pad2 = n => String(n).padStart(2, '0');
+  const fmt  = d => `${pad2(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  const spoken = d => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+
+  function birthText(r){
+    return `Day of birth = ${fmt(r.birth)}`;
+  }
+
+  function deathText(r){
+    if (state.agt){
+      const y = r.birth.getUTCFullYear() + 7777777;
+      return `Agaer agaer day = ${pad2(r.birth.getUTCDate())} ${MONTHS[r.birth.getUTCMonth()]} ${y} — death removed by AGT8000 (simulated)`;
+    }
+    return `Agaer agaer day (day of death at birth) = ${fmt(r.death)}`;
+  }
+
+  /* ================= Speech ================= */
+
+  function pickVoice(){
+    if (!('speechSynthesis' in window)) return null;
+    const voices = speechSynthesis.getVoices();
+    if (!voices.length) return null;
+    const en = voices.filter(v => /^en/i.test(v.lang));
+    return en.find(v => /female|samantha|karen|zira|aria|jenny|google uk english female/i.test(v.name))
+        || en[0] || voices[0];
+  }
+
+  function speak(text){
+    if (!state.voiceOn || !('speechSynthesis' in window)) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95;
+      u.pitch = 0.95;
+      const v = pickVoice();
+      if (v) u.voice = v;
+      speechSynthesis.speak(u);
+    } catch (e) { /* ignore */ }
+  }
+
+  if ('speechSynthesis' in window){
+    speechSynthesis.onvoiceschanged = () => {};
+  }
+
+  /* ================= Bubble ================= */
+
+  function showBubble(text, pending){
+    bubble.hidden = false;
+    bubble.textContent = text;
+    bubble.classList.toggle('pending', !!pending);
+    requestAnimationFrame(() => bubble.classList.add('show'));
+  }
+
+  function typeBubble(text){
+    clearInterval(state.typer);
+    bubble.hidden = false;
+    bubble.classList.remove('pending');
+    bubble.classList.add('show');
+    let i = 0;
+    bubble.textContent = '';
+    state.typer = setInterval(() => {
+      i++;
+      bubble.textContent = text.slice(0, i);
+      if (i >= text.length) clearInterval(state.typer);
+    }, 26);
+  }
+
+  function hideBubble(){
+    clearInterval(state.typer);
+    bubble.classList.remove('show');
+    bubble.classList.remove('pending');
+  }
+
+  /* ================= Log ================= */
+
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, c =>
+      ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  function log(q, a){
+    logEmpty.hidden = true;
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="q">${esc(q)}</span><span class="a">${esc(a)}</span>`;
+    logList.prepend(li);
+  }
+
+  /* ================= Scan animation ================= */
+
+  const easeInOut = t => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+
+  function updateButtons(){
+    const ready = !!state.img && !state.animating;
+    btnBirth.disabled = !ready;
+    btnDeath.disabled = !ready;
+    clearBtn.disabled = !state.img || state.animating;
+  }
+
+  function runScan(kind){
+    if (!state.img || state.animating) return;
+
+    state.animating = true;
+    const runId = ++state.runId;
+    updateButtons();
+    hideBubble();
+    showBubble('…reading…', true);
+
+    const poly = buildPolyline(PATHS[kind], canvas.width, canvas.height);
+    const duration = 2300;
+    const t0 = performance.now();
+
+    function frame(now){
+      if (runId !== state.runId) return;
+      const raw = Math.min(1, (now - t0) / duration);
+      const d = poly.total * easeInOut(raw);
+      drawScene(poly, d);
+      if (raw < 1) requestAnimationFrame(frame);
+      else setTimeout(() => finishScan(kind, runId), 260);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function finishScan(kind, runId){
+    if (runId !== state.runId) return;
+
+    const r = getReadings();
+    const text = kind === 'birth' ? birthText(r) : deathText(r);
+
+    typeBubble(text);
+
+    if (kind === 'birth'){
+      speak(`Day of birth equals ${spoken(r.birth)}.`);
+      log('What is their day of birth?', text);
+    } else if (state.agt){
+      speak(`Agaer agaer day equals ${spoken(r.birth)}, plus seven million seven hundred seventy seven thousand seven hundred seventy seven years. Death removed.`);
+      log('What is their day of death at birth?', text);
+    } else {
+      speak(`Agaer agaer day. Day of death at birth equals ${spoken(r.death)}.`);
+      log('What is their day of death at birth?', text);
+    }
+
+    state.animating = false;
+    updateButtons();
+  }
+
+  /* ================= Events ================= */
+
+  btnBirth.addEventListener('click', () => runScan('birth'));
+  btnDeath.addEventListener('click', () => runScan('death'));
+  clearBtn.addEventListener('click', clearAll);
+
+  fileInput.addEventListener('change', e => {
+    if (e.target.files && e.target.files[0]) loadFile(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  voiceToggle.addEventListener('change', e => {
+    state.voiceOn = e.target.checked;
+    if (!state.voiceOn && 'speechSynthesis' in window) speechSynthesis.cancel();
+  });
+
+  agtToggle.addEventListener('change', e => {
+    state.agt = e.target.checked;
+  });
+
+  // Drag & drop
+  ['dragenter','dragover'].forEach(ev =>
+    dropzone.addEventListener(ev, e => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    })
+  );
+  ['dragleave','dragend'].forEach(ev =>
+    dropzone.addEventListener(ev, e => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+    })
+  );
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadFile(f);
+  });
+
+  // Paste an image straight from the clipboard
+  window.addEventListener('paste', e => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const it of items){
+      if (it.type.startsWith('image/')){
+        const f = it.getAsFile();
+        if (f){ loadFile(f); break; }
+      }
+    }
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    if (e.target.matches('input, textarea')) return;
+    if (e.key === '1'){ e.preventDefault(); runScan('birth'); }
+    if (e.key === '2'){ e.preventDefault(); runScan('death'); }
+  });
+
+  updateButtons();
+})();
+</script>
+</body>
+</html>
